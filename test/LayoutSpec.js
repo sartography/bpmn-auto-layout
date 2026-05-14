@@ -27,6 +27,115 @@ describe('Layout', function() {
     }
   });
 
+  it('should not draw collapsed subprocess children in the parent plane', async function() {
+
+    // given
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_1" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="SubProcess_1" />
+    <bpmn:subProcess id="SubProcess_1">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+      <bpmn:startEvent id="NestedStart_1">
+        <bpmn:outgoing>NestedFlow_1</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="NestedFlow_1" sourceRef="NestedStart_1" targetRef="NestedTask_1" />
+      <bpmn:task id="NestedTask_1">
+        <bpmn:incoming>NestedFlow_1</bpmn:incoming>
+      </bpmn:task>
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="SubProcess_1" targetRef="EndEvent_1" />
+    <bpmn:endEvent id="EndEvent_1">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>`;
+
+    // when
+    const output = await layoutProcess(xml);
+
+    // then
+    assert.match(output, /<bpmndi:BPMNShape[^>]+bpmnElement="SubProcess_1"/);
+    assert.doesNotMatch(output, /<bpmndi:BPMNShape[^>]+bpmnElement="NestedStart_1"/);
+    assert.doesNotMatch(output, /<bpmndi:BPMNShape[^>]+bpmnElement="NestedTask_1"/);
+    assert.doesNotMatch(output, /<bpmndi:BPMNEdge[^>]+bpmnElement="NestedFlow_1"/);
+  });
+
+  it('should ignore expanded descendants of collapsed subprocesses', async function() {
+
+    // given
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_1" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="OuterSubProcess_1" />
+    <bpmn:subProcess id="OuterSubProcess_1">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:subProcess id="InnerSubProcess_1">
+        <bpmn:startEvent id="NestedStart_1" />
+      </bpmn:subProcess>
+    </bpmn:subProcess>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Process_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_Process_1" bpmnElement="Process_1">
+      <bpmndi:BPMNShape id="OuterSubProcess_1_di" bpmnElement="OuterSubProcess_1">
+        <dc:Bounds x="100" y="100" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="InnerSubProcess_1_di" bpmnElement="InnerSubProcess_1" isExpanded="true">
+        <dc:Bounds x="140" y="140" width="100" height="80" />
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>`;
+
+    // when
+    const output = await layoutProcess(xml);
+
+    // then
+    assert.match(output, /<bpmndi:BPMNShape[^>]+bpmnElement="OuterSubProcess_1"/);
+    assert.doesNotMatch(output, /<bpmndi:BPMNShape[^>]+bpmnElement="InnerSubProcess_1"/);
+    assert.doesNotMatch(output, /<bpmndi:BPMNShape[^>]+bpmnElement="NestedStart_1"/);
+  });
+
+  it('should place disconnected flow nodes after connected flow nodes', async function() {
+
+    // given
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_1" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_1" />
+    <bpmn:task id="Task_1">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_1" targetRef="EndEvent_1" />
+    <bpmn:endEvent id="EndEvent_1">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:task id="IsolatedTask_1" />
+    <bpmn:task id="IsolatedTask_2" />
+  </bpmn:process>
+</bpmn:definitions>`;
+
+    // when
+    const output = await layoutProcess(xml);
+    const bounds = boundsByElement(output);
+    const connectedMaxX = bounds.EndEvent_1.x + bounds.EndEvent_1.width;
+
+    // then
+    assert.ok(bounds.IsolatedTask_1.x > connectedMaxX);
+    assert.ok(bounds.IsolatedTask_2.x > connectedMaxX);
+  });
+
   fs.readdirSync(fixturesDirectory)
     .filter(fileName => fileName.endsWith('.bpmn'))
     .forEach(fileName => {
@@ -125,4 +234,20 @@ function iit(fileName) {
   }
 
   return it;
+}
+
+function boundsByElement(xml) {
+  const bounds = {};
+  const shapePattern = /<bpmndi:BPMNShape[^>]+bpmnElement="([^"]+)"[\s\S]*?<dc:Bounds x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g;
+
+  for (const [ , elementId, x, y, width, height ] of xml.matchAll(shapePattern)) {
+    bounds[elementId] = {
+      height: Number(height),
+      width: Number(width),
+      x: Number(x),
+      y: Number(y)
+    };
+  }
+
+  return bounds;
 }
