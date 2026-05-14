@@ -134,6 +134,43 @@ describe('Layout', function() {
     // then
     assert.ok(bounds.IsolatedTask_1.x > connectedMaxX);
     assert.ok(bounds.IsolatedTask_2.x > connectedMaxX);
+    assert.ok(bounds.IsolatedTask_1.y > bounds.EndEvent_1.y);
+    assert.ok(bounds.IsolatedTask_2.y > bounds.EndEvent_1.y);
+  });
+
+  it('should keep the default gateway flow on the same row', async function() {
+
+    // given
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_1" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_Start</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_Start" sourceRef="StartEvent_1" targetRef="Gateway_1" />
+    <bpmn:exclusiveGateway id="Gateway_1" default="Flow_Default">
+      <bpmn:incoming>Flow_Start</bpmn:incoming>
+      <bpmn:outgoing>Flow_No</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Default</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_No" name="No" sourceRef="Gateway_1" targetRef="Task_No" />
+    <bpmn:task id="Task_No">
+      <bpmn:incoming>Flow_No</bpmn:incoming>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="Flow_Default" name="Yes" sourceRef="Gateway_1" targetRef="Task_Default" />
+    <bpmn:task id="Task_Default">
+      <bpmn:incoming>Flow_Default</bpmn:incoming>
+    </bpmn:task>
+  </bpmn:process>
+</bpmn:definitions>`;
+
+    // when
+    const output = await layoutProcess(xml);
+    const bounds = boundsByElement(output);
+
+    // then
+    assert.ok(bounds.Task_Default.y < bounds.Task_No.y);
+    assert.ok(bounds.Task_Default.x > bounds.Gateway_1.x);
   });
 
   fs.readdirSync(fixturesDirectory)
