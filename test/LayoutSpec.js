@@ -173,6 +173,61 @@ describe('Layout', function() {
     assert.ok(bounds.Task_Default.x > bounds.Gateway_1.x);
   });
 
+  it('should place a shared gateway rejection sink below the gateway span', async function() {
+
+    // given
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_1" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_Start</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_Start" sourceRef="StartEvent_1" targetRef="Gateway_1" />
+    <bpmn:exclusiveGateway id="Gateway_1" default="Flow_Default_1">
+      <bpmn:incoming>Flow_Start</bpmn:incoming>
+      <bpmn:outgoing>Flow_Reject_1</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Default_1</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_Default_1" name="Yes" sourceRef="Gateway_1" targetRef="Task_1" />
+    <bpmn:task id="Task_1">
+      <bpmn:incoming>Flow_Default_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_Task_1</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="Flow_Task_1" sourceRef="Task_1" targetRef="Gateway_2" />
+    <bpmn:exclusiveGateway id="Gateway_2" default="Flow_Default_2">
+      <bpmn:incoming>Flow_Task_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_Reject_2</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Default_2</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_Default_2" name="Yes" sourceRef="Gateway_2" targetRef="SuccessEnd" />
+    <bpmn:endEvent id="SuccessEnd">
+      <bpmn:incoming>Flow_Default_2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_Reject_1" name="No" sourceRef="Gateway_1" targetRef="RejectTask" />
+    <bpmn:sequenceFlow id="Flow_Reject_2" name="No" sourceRef="Gateway_2" targetRef="RejectTask" />
+    <bpmn:manualTask id="RejectTask">
+      <bpmn:incoming>Flow_Reject_1</bpmn:incoming>
+      <bpmn:incoming>Flow_Reject_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_Reject_End</bpmn:outgoing>
+    </bpmn:manualTask>
+    <bpmn:sequenceFlow id="Flow_Reject_End" sourceRef="RejectTask" targetRef="RejectEnd" />
+    <bpmn:endEvent id="RejectEnd">
+      <bpmn:incoming>Flow_Reject_End</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>`;
+
+    // when
+    const output = await layoutProcess(xml);
+    const bounds = boundsByElement(output);
+
+    // then
+    assert.ok(bounds.RejectTask.y > bounds.Gateway_1.y);
+    assert.ok(bounds.RejectTask.x > bounds.Gateway_1.x);
+    assert.ok(bounds.RejectTask.x < bounds.Gateway_2.x);
+    assert.ok(bounds.RejectEnd.y > bounds.RejectTask.y + bounds.RejectTask.height);
+  });
+
   fs.readdirSync(fixturesDirectory)
     .filter(fileName => fileName.endsWith('.bpmn'))
     .forEach(fileName => {
