@@ -350,6 +350,7 @@ describe('Layout', function() {
     // then
     assert.ok(flow.some(point => point.y < bounds.Gateway_1.y));
     assert.ok(flow.every(point => point.y <= bounds.Gateway_1.y + bounds.Gateway_1.height));
+    assert.ok(Math.min(...flow.map(point => point.y)) >= bounds.Gateway_1.y - 75);
   });
 
   it('should place a shared gateway rejection sink below the gateway span', async function() {
