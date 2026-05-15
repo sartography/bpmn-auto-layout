@@ -220,12 +220,18 @@ describe('Layout', function() {
     // when
     const output = await layoutProcess(xml);
     const bounds = boundsByElement(output);
+    const rejectFlow = edgeWaypointsByElement(output).Flow_Reject_2;
 
     // then
     assert.ok(bounds.RejectTask.y > bounds.Gateway_1.y);
+    assert.ok(bounds.RejectTask.y - bounds.Gateway_1.y >= 150);
     assert.ok(bounds.RejectTask.x > bounds.Gateway_1.x);
     assert.ok(bounds.RejectTask.x < bounds.Gateway_2.x);
     assert.ok(bounds.RejectEnd.y > bounds.RejectTask.y + bounds.RejectTask.height);
+    assert.ok(bounds.RejectEnd.y - bounds.RejectTask.y - bounds.RejectTask.height >= 60);
+    assert.strictEqual(rejectFlow[0].y, bounds.Gateway_2.y + bounds.Gateway_2.height);
+    assert.ok(rejectFlow.every(point => point.y >= bounds.Gateway_2.y));
+    assert.ok(rejectFlow.every(point => point.y <= bounds.RejectTask.y + bounds.RejectTask.height / 2));
   });
 
   fs.readdirSync(fixturesDirectory)
@@ -342,4 +348,16 @@ function boundsByElement(xml) {
   }
 
   return bounds;
+}
+
+function edgeWaypointsByElement(xml) {
+  const waypoints = {};
+  const edgePattern = /<bpmndi:BPMNEdge[^>]+bpmnElement="([^"]+)"[\s\S]*?<\/bpmndi:BPMNEdge>/g;
+
+  for (const [ edgeXml, elementId ] of xml.matchAll(edgePattern)) {
+    waypoints[elementId] = [ ...edgeXml.matchAll(/<di:waypoint x="([^"]+)" y="([^"]+)"/g) ]
+      .map(([, x, y]) => ({ x: Number(x), y: Number(y) }));
+  }
+
+  return waypoints;
 }
