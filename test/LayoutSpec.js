@@ -196,6 +196,46 @@ describe('Layout', function() {
     assert.ok(bounds.IsolatedTask_2.y > bounds.EndEvent_1.y);
   });
 
+  it('should keep annotated disconnected flow nodes above the main flow', async function() {
+
+    // given
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_1" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_1" />
+    <bpmn:task id="Task_1">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_1" targetRef="EndEvent_1" />
+    <bpmn:endEvent id="EndEvent_1">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:subProcess id="AnnotatedSubProcess_1" />
+    <bpmn:textAnnotation id="TextAnnotation_1">
+      <bpmn:text>Keep for later</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_1" associationDirection="None" sourceRef="AnnotatedSubProcess_1" targetRef="TextAnnotation_1" />
+  </bpmn:process>
+</bpmn:definitions>`;
+
+    // when
+    const output = await layoutProcess(xml);
+    const bounds = boundsByElement(output);
+    const association = edgeWaypointsByElement(output).Association_1;
+
+    // then
+    assert.ok(bounds.AnnotatedSubProcess_1.y < bounds.Task_1.y);
+    assert.ok(bounds.TextAnnotation_1.y < bounds.Task_1.y);
+    assert.ok(bounds.TextAnnotation_1.x < bounds.AnnotatedSubProcess_1.x);
+    assert.match(output, /<bpmndi:BPMNEdge[^>]+bpmnElement="Association_1"/);
+    assert.ok(association.every(point => point.y >= bounds.TextAnnotation_1.y));
+    assert.ok(association.every(point => point.y <= bounds.AnnotatedSubProcess_1.y + bounds.AnnotatedSubProcess_1.height));
+  });
+
   it('should keep the default gateway flow on the same row', async function() {
 
     // given
@@ -229,6 +269,87 @@ describe('Layout', function() {
     // then
     assert.ok(bounds.Task_Default.y < bounds.Task_No.y);
     assert.ok(bounds.Task_Default.x > bounds.Gateway_1.x);
+  });
+
+  it('should place non-default gateway end events below the gateway', async function() {
+
+    // given
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_1" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_Start</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_Start" sourceRef="StartEvent_1" targetRef="Gateway_1" />
+    <bpmn:exclusiveGateway id="Gateway_1" default="Flow_Default">
+      <bpmn:incoming>Flow_Start</bpmn:incoming>
+      <bpmn:outgoing>Flow_Default</bpmn:outgoing>
+      <bpmn:outgoing>Flow_No</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_Default" name="Yes" sourceRef="Gateway_1" targetRef="Task_Default" />
+    <bpmn:task id="Task_Default">
+      <bpmn:incoming>Flow_Default</bpmn:incoming>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="Flow_No" name="No" sourceRef="Gateway_1" targetRef="EndEvent_No" />
+    <bpmn:endEvent id="EndEvent_No">
+      <bpmn:incoming>Flow_No</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>`;
+
+    // when
+    const output = await layoutProcess(xml);
+    const bounds = boundsByElement(output);
+    const flow = edgeWaypointsByElement(output).Flow_No;
+
+    // then
+    assert.strictEqual(bounds.EndEvent_No.x + bounds.EndEvent_No.width / 2, bounds.Gateway_1.x + bounds.Gateway_1.width / 2);
+    assert.ok(bounds.EndEvent_No.y > bounds.Gateway_1.y);
+    assert.strictEqual(flow[0].x, flow[1].x);
+  });
+
+  it('should route blocked gateway-to-gateway flows above the main row', async function() {
+
+    // given
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_1" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_Start</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_Start" sourceRef="StartEvent_1" targetRef="Gateway_1" />
+    <bpmn:exclusiveGateway id="Gateway_1" default="Flow_Task">
+      <bpmn:incoming>Flow_Start</bpmn:incoming>
+      <bpmn:outgoing>Flow_Task</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Gateway</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_Task" sourceRef="Gateway_1" targetRef="Task_1" />
+    <bpmn:task id="Task_1">
+      <bpmn:incoming>Flow_Task</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToGateway</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="Flow_ToGateway" sourceRef="Task_1" targetRef="Gateway_2" />
+    <bpmn:exclusiveGateway id="Gateway_2">
+      <bpmn:incoming>Flow_ToGateway</bpmn:incoming>
+      <bpmn:incoming>Flow_Gateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_End</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_Gateway" name="Yes" sourceRef="Gateway_1" targetRef="Gateway_2" />
+    <bpmn:sequenceFlow id="Flow_End" sourceRef="Gateway_2" targetRef="EndEvent_1" />
+    <bpmn:endEvent id="EndEvent_1">
+      <bpmn:incoming>Flow_End</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>`;
+
+    // when
+    const output = await layoutProcess(xml);
+    const bounds = boundsByElement(output);
+    const flow = edgeWaypointsByElement(output).Flow_Gateway;
+
+    // then
+    assert.ok(flow.some(point => point.y < bounds.Gateway_1.y));
+    assert.ok(flow.every(point => point.y <= bounds.Gateway_1.y + bounds.Gateway_1.height));
   });
 
   it('should place a shared gateway rejection sink below the gateway span', async function() {
