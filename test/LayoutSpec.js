@@ -65,6 +65,64 @@ describe('Layout', function() {
     assert.doesNotMatch(output, /<bpmndi:BPMNEdge[^>]+bpmnElement="NestedFlow_1"/);
   });
 
+  it('should preserve collapsed subprocess planes for drill-down contents', async function() {
+
+    // given
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_1" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="SubProcess_1" />
+    <bpmn:subProcess id="SubProcess_1">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+      <bpmn:startEvent id="NestedStart_1">
+        <bpmn:outgoing>NestedFlow_1</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="NestedFlow_1" sourceRef="NestedStart_1" targetRef="NestedTask_1" />
+      <bpmn:task id="NestedTask_1">
+        <bpmn:incoming>NestedFlow_1</bpmn:incoming>
+      </bpmn:task>
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="SubProcess_1" targetRef="EndEvent_1" />
+    <bpmn:endEvent id="EndEvent_1">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Process_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_Process_1" bpmnElement="Process_1">
+      <bpmndi:BPMNShape id="SubProcess_1_di" bpmnElement="SubProcess_1">
+        <dc:Bounds x="100" y="100" width="100" height="80" />
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_SubProcess_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_SubProcess_1" bpmnElement="SubProcess_1">
+      <bpmndi:BPMNShape id="NestedStart_1_di" bpmnElement="NestedStart_1">
+        <dc:Bounds x="100" y="100" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="NestedTask_1_di" bpmnElement="NestedTask_1">
+        <dc:Bounds x="200" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>`;
+
+    // when
+    const output = await layoutProcess(xml);
+    const rootPlane = planeXmlByElement(output, 'Process_1');
+    const subProcessPlane = planeXmlByElement(output, 'SubProcess_1');
+
+    // then
+    assert.match(rootPlane, /<bpmndi:BPMNShape[^>]+bpmnElement="SubProcess_1"/);
+    assert.doesNotMatch(rootPlane, /bpmnElement="NestedStart_1"/);
+    assert.match(subProcessPlane, /<bpmndi:BPMNShape[^>]+bpmnElement="NestedStart_1"/);
+    assert.match(subProcessPlane, /<bpmndi:BPMNShape[^>]+bpmnElement="NestedTask_1"/);
+    assert.match(subProcessPlane, /<bpmndi:BPMNEdge[^>]+bpmnElement="NestedFlow_1"/);
+  });
+
   it('should ignore expanded descendants of collapsed subprocesses', async function() {
 
     // given
@@ -360,4 +418,13 @@ function edgeWaypointsByElement(xml) {
   }
 
   return waypoints;
+}
+
+function planeXmlByElement(xml, elementId) {
+  const planePattern = new RegExp(`<bpmndi:BPMNPlane[^>]+bpmnElement="${ elementId }"[\\s\\S]*?<\\/bpmndi:BPMNPlane>`);
+  const match = xml.match(planePattern);
+
+  assert.ok(match, `Expected BPMNPlane for ${ elementId }`);
+
+  return match[0];
 }
