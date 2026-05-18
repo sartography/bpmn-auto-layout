@@ -31,7 +31,7 @@ describe('Layout', function() {
 
     // given
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="Process_1" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_1</bpmn:outgoing>
@@ -357,7 +357,7 @@ describe('Layout', function() {
 
     // given
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="Process_1" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
       <bpmn:outgoing>Flow_Start</bpmn:outgoing>
@@ -412,6 +412,77 @@ describe('Layout', function() {
     assert.strictEqual(rejectFlow[0].y, bounds.Gateway_2.y + bounds.Gateway_2.height);
     assert.ok(rejectFlow.every(point => point.y >= bounds.Gateway_2.y));
     assert.ok(rejectFlow.every(point => point.y <= bounds.RejectTask.y + bounds.RejectTask.height / 2));
+  });
+
+  it('should keep data objects near associated flow nodes and render data associations', async function() {
+
+    // given
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_1" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_Start</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_Start" sourceRef="StartEvent_1" targetRef="SubProcess_1" />
+    <bpmn:subProcess id="SubProcess_1">
+      <bpmn:incoming>Flow_Start</bpmn:incoming>
+      <bpmn:outgoing>Flow_End</bpmn:outgoing>
+      <bpmn:startEvent id="NestedStart_1">
+        <bpmn:outgoing>NestedFlow_1</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="NestedFlow_1" sourceRef="NestedStart_1" targetRef="ProducerTask_1" />
+      <bpmn:task id="ProducerTask_1">
+        <bpmn:incoming>NestedFlow_1</bpmn:incoming>
+        <bpmn:outgoing>NestedFlow_2</bpmn:outgoing>
+        <bpmn:dataOutputAssociation id="DataOutputAssociation_1">
+          <bpmn:targetRef>DataObjectReference_1</bpmn:targetRef>
+        </bpmn:dataOutputAssociation>
+      </bpmn:task>
+      <bpmn:sequenceFlow id="NestedFlow_2" sourceRef="ProducerTask_1" targetRef="ConsumerTask_1" />
+      <bpmn:task id="ConsumerTask_1">
+        <bpmn:incoming>NestedFlow_2</bpmn:incoming>
+        <bpmn:outgoing>NestedFlow_3</bpmn:outgoing>
+        <bpmn:property id="Property_1" name="__targetRef_placeholder" />
+        <bpmn:dataInputAssociation id="DataInputAssociation_1">
+          <bpmn:sourceRef>DataObjectReference_1</bpmn:sourceRef>
+          <bpmn:targetRef>Property_1</bpmn:targetRef>
+        </bpmn:dataInputAssociation>
+      </bpmn:task>
+      <bpmn:sequenceFlow id="NestedFlow_3" sourceRef="ConsumerTask_1" targetRef="NestedEnd_1" />
+      <bpmn:endEvent id="NestedEnd_1">
+        <bpmn:incoming>NestedFlow_3</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:dataObjectReference id="DataObjectReference_1" dataObjectRef="DataObject_1" />
+      <bpmn:dataObject id="DataObject_1" />
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="Flow_End" sourceRef="SubProcess_1" targetRef="EndEvent_1" />
+    <bpmn:endEvent id="EndEvent_1">
+      <bpmn:incoming>Flow_End</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Process_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_Process_1" bpmnElement="Process_1">
+      <bpmndi:BPMNShape id="SubProcess_1_di" bpmnElement="SubProcess_1" isExpanded="true">
+        <dc:Bounds x="200" y="100" width="650" height="260" />
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>`;
+
+    // when
+    const output = await layoutProcess(xml);
+    const bounds = boundsByElement(output);
+    const waypoints = edgeWaypointsByElement(output);
+
+    // then
+    assert.match(output, /<bpmndi:BPMNEdge[^>]+bpmnElement="DataOutputAssociation_1"/);
+    assert.match(output, /<bpmndi:BPMNEdge[^>]+bpmnElement="DataInputAssociation_1"/);
+    assert.doesNotMatch(output, /<bpmndi:BPMNShape[^>]+bpmnElement="DataObject_1"/);
+    assert.ok(bounds.DataObjectReference_1.y > bounds.ProducerTask_1.y + bounds.ProducerTask_1.height);
+    assert.ok(bounds.DataObjectReference_1.x > bounds.ProducerTask_1.x);
+    assert.ok(bounds.DataObjectReference_1.x < bounds.ConsumerTask_1.x + bounds.ConsumerTask_1.width);
+    assert.ok(waypoints.DataOutputAssociation_1.every(point => point.y >= bounds.ProducerTask_1.y));
+    assert.ok(waypoints.DataInputAssociation_1.every(point => point.y >= bounds.ConsumerTask_1.y));
   });
 
   fs.readdirSync(fixturesDirectory)
