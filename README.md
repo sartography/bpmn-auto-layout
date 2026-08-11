@@ -20,6 +20,17 @@ const diagramWithLayoutXML = await layoutProcess(diagramXML);
 console.log(diagramWithLayoutXML);
 ```
 
+Pass moddle extension descriptors when the BPMN contains extension elements
+that must be preserved during layout:
+
+```javascript
+import customModdleDescriptor from './custom-moddle.json' with { type: 'json' };
+
+const diagramWithLayoutXML = await layoutProcess(diagramXML, {
+  moddleExtensions: { custom: customModdleDescriptor }
+});
+```
+
 ## Limitations
 
 * Given a collaboration only the first participant's process will be laid out
